@@ -2,10 +2,16 @@ package com.sky.service.impl;
 
 import com.github.pagehelper.Page;
 import com.github.pagehelper.PageHelper;
+import com.sky.constant.MessageConstant;
+import com.sky.constant.StatusConstant;
 import com.sky.dto.SetmealDTO;
 import com.sky.dto.SetmealPageQueryDTO;
+import com.sky.entity.Dish;
 import com.sky.entity.Setmeal;
 import com.sky.entity.SetmealDish;
+import com.sky.exception.DeletionNotAllowedException;
+import com.sky.exception.SetmealEnableFailedException;
+import com.sky.mapper.DishMapper;
 import com.sky.mapper.SetmealDishMapper;
 import com.sky.mapper.SetmealMapper;
 import com.sky.result.PageResult;
@@ -27,6 +33,9 @@ public class SetmealServiceImpl implements SetmealService {
 
     @Autowired
     SetmealDishMapper setmealDishMapper;
+
+    @Autowired
+    DishMapper dishMapper;
 
     /**
      * 新增套餐
@@ -72,6 +81,12 @@ public class SetmealServiceImpl implements SetmealService {
     @Override
     @Transactional
     public void deleteBatch(List<Long> ids) {
+        for (Long id : ids) {
+            Setmeal setmeal = setmealMapper.getById(id);
+            if (setmeal.getStatus() == StatusConstant.ENABLE) {
+                throw new DeletionNotAllowedException(MessageConstant.SETMEAL_ON_SALE);
+            }
+        }
 
         for (Long id : ids) {
             //删除套餐
@@ -126,5 +141,28 @@ public class SetmealServiceImpl implements SetmealService {
         BeanUtils.copyProperties(setmeal, setmealVO);
         setmealVO.setSetmealDishes(setmealDishes);
         return setmealVO;
+    }
+
+    /**
+     * 启售停售套餐
+     */
+    @Override
+    public void startOrStop(Integer status, Long id) {
+        //当前套餐下有停售菜品不启售
+        if (status == StatusConstant.ENABLE) {
+            List<SetmealDish> setmealDishes = setmealDishMapper.getBySetmealId(id);
+            for (SetmealDish setmealDish : setmealDishes) {
+                Long dishId = setmealDish.getDishId();
+                Dish dish = dishMapper.getById(dishId);
+                if (dish.getStatus() == StatusConstant.DISABLE) {
+                    throw new SetmealEnableFailedException(MessageConstant.SETMEAL_ENABLE_FAILED);
+                }
+            }
+        }
+
+        Setmeal setmeal = new Setmeal();
+        setmeal.setId(id);
+        setmeal.setStatus(status);
+        setmealMapper.update(setmeal);
     }
 }
